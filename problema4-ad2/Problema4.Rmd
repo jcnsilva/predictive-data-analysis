@@ -1,0 +1,53 @@
+---
+title: "Problema 4 - Checkpoint 1"
+author: "Julio Cesar Neves"
+date: "13 de abril de 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Pré-processando os dados e obtendo informações#
+Para poder realizar a regressão linear dos dados deste problema, foi necessário derivar informações a partir dos dados originais. Nesse caso, os dados que foram derivados foram a distância entre os pontos de medição do gps (em quilômetros) e o tempo de duração de cada trecho da viagem.
+Em posse dessas informações, foi possível calcular o percurso total de cada ônibus e o tempo total utilizado para a conclusão de cada viagem e realizar nossa regressão sobre esses dados.
+O código utilizado no pré-processamento dos dados pode ser encontrado em: [link](https://github.com/juliocns/problema4-ad2/blob/master/geoinfo.py) e [link](https://github.com/juliocns/problema4-ad2/blob/master/problema4.py); Algumas imagens do código podem ser vistas abaixo:
+![](/home/julio/Imagens/1.png)
+![](/home/julio/Imagens/2.png)
+![](/home/julio/Imagens/3.png)
+
+Após a execucão do script problema4.py, outro script foi executado para converter o arquivo de saída do Spark para o formato csv, que poderia ser mais facilmente utilizado em nossos cálculos.
+
+#Obtenção do modelo#
+Primeiramente, é importante notar que a baixíssima quantidade de amostras fez com que o modelo não fosse tão eficiente quanto desejado.
+
+De um total de 6 amostras, 4 foram utilizadas para o treino do modelo proposto e 2 foram usadas para testá-lo.
+Os detalhes do modelo obtido podem ser visualizados a seguir.
+
+```{r message=FALSE}
+library("dplyr")
+library("ggplot2")
+dados <- read.csv("prob4data.csv")
+dados <- mutate(dados, treino = c(T, T, T, T, F, F))
+treino <- filter(dados, treino == T)
+modelo <- lm(tempo ~ distancia, treino)
+summary(modelo)
+```
+Além disso, podemos observar a representação gráfica da reta de regressão e com base nestas informações responder a algumas perguntas interessantes.
+
+```{r}
+ggplot(treino, aes(x = distancia, y = tempo)) + geom_smooth(method = "lm")
+```
+
+De acordo com os dados obtidos anteriormente, é possível constatar que parece mais fácil prever a quantidade de tempo que o ônibus AA006 leva em seu percurso e que nossas previsões não são tão eficientes para medir o tempo de deslocamento do ônibus AA005.
+Em relação as linhas, pode-se perceber que 822 e 827 são mais previsíveis e que a linha 812 apresenta um comportamento mais irregular, sendo previsível algumas vezes e outras não.
+
+```{r}
+distancias <- select(dados, distancia)
+modelado <- predict(modelo, distancias)
+dados <- mutate(dados, estimativa = modelado)
+ggplot(dados, aes(x = distancia, y = tempo)) + geom_smooth(method = "lm") +
+  geom_point(mapping = aes(x = distancia, y = tempo)) + 
+  geom_text(aes(label= paste(onibus, linha)))
+```

@@ -1,0 +1,132 @@
+---
+title: "Problema 3 - Checkpoint 2"
+author: "Julio Cesar Neves"
+date: "31 de março de 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE}
+#helpers
+find.mode <- function(x) {
+  ux <- unique(x)
+  tab <- tabulate(match(x, ux))
+  ux[tab == max(tab)]
+}
+```
+
+```{r}
+#Dados disponíveis em http://statweb.stanford.edu/~tibs/ElemStatLearn/datasets/prostate.data
+data <- read.table("prostate.data.txt", header=T, sep="\t")
+train <- data[data$train == T, ]
+test <-data[data$train == F, ]
+```
+
+#Descrição do Problema#
+O PSA, Antígeno Prostático Específico, é uma substância produzida pelas células da glândula prostática. O principal local onde o PSA pode ser encontrado é o sêmen, mas uma pequena quantidade também pode ser encontrada no sangue.  
+Níveis de PSA acima de 4ng/ml indicam um possível comprometimento da glândula prostática e quanto maior a quantidade do antígeno presente no sangue, maior a probabilidade do paciente apresentar câncer de próstata. Por causa disso, a medição do nível do PSA é utilizada como uns dos principais meios de diagnosticar o câncer de próstata.
+
+#Objetivo#
+O objetivo dessa análise é verificar quais fatores podem levar ao aumento do nível de PSA no sangue de um paciente. Para atingir tal objetivo, serão utilizados dados disponibilizados pela Universidade de Stanford que apresentam o nível de PSA de `r nrow(data)` pacientes, juntamente com `r ncol(data)-2` fatores que podem influenciar em seus níveis de PSA. Esses fatores são:
+*O volume do câncer (lcavol)
+*O peso do paciente (lweight)
+*A idade do paciente (age)
+*Nível de hiperplasia prostática benigna (lbph)
+*Ocorrência de invasão das vesículas seminais (svi)
+*Nível de penetração capsular (lcp)
+*Escore de Gleason (gleason)
+*Porcentagem de ocorrência de Escore de Gleason 4 ou 5 (pgg45)
+
+#Visualizando os dados#
+Antes de prosseguir com a análise de regressão, vamos obter mais informações sobre as variáveis disponíveis.
+Primeiramente, vamos verificar se há entradas incompletas em nossos dados.
+
+```{r}
+sum(!complete.cases(train))
+```
+
+É possível verificar que aparentemente todos os nossos dados estão completos.
+Em seguida, podemos fazer a exploração das variáveis, verificando a distribuição das mesmas e a possível presença de padrões.
+
+```{r message=FALSE}
+library(ggplot2)
+library(reshape)
+cols <- ncol(train)
+d <- melt(train[,-c(1, cols)])
+ggplot(d ,aes(x = value)) + 
+  facet_wrap(~variable, scales = "free_x") + 
+  geom_histogram()
+```
+
+A partir do gráfico das variáveis podemos observar que as variáveis que representam o volume do câncer (lcavol), o peso do paciente (lweight), o nível de hiperplasia (lbph) e o nível de penetração capsular (lcp) parecem estar em escala logaritmica.  
+Nas variáveis lbph e lcp, conseguimos perceber que há um valor que concentra muitas ocorrências, a saber `r find.mode(data$lbph)`. Não foi possível explicar tal concentração com os dados disponíveis.
+Além disso, tudo indica que a variável svi indique um valor lógico binário por meio dos números 0 e 1.
+
+#Escolha de preditores#
+Para escolher que preditores utilizaremos em nossa análise, podemos começar excluindo os preditores de variância muito próxima a zero, pois estes podem gerar confusão em nosso modelo de regressão. Após isso, podemos testar quais deles estão correlacionados, a fim de evitar redundâncias. 
+
+##Análise de Variância##
+O total de variáveis preditoras com variância próxima a zero pode ser descoberta utilizando a biblioteca caret da linguagem R:
+
+```{r}
+library("caret")
+print(nearZeroVar(train[,3:ncol(train)-1], saveMetrics = FALSE))
+```
+Como podemos observar, não há variáveis com variância próxima ou igual a zero em nossos dados.
+
+##Verificação de Correlação##
+O próximo passo é verificar quais variáveis preditoras estão correlacionadas. Assim saberemos quais variáveis podem ser retiradas de nosso modelo sem prejuízos a acurácia do modelo.
+Para verificar a correlação entre as variáveis, vamos utilizar um gráfico baseado na matriz de correlação.
+
+```{r}
+library("corrplot")
+nums <- sapply(train, is.numeric)
+correlations = cor(train[,nums], method="pearson")
+corrplot(correlations, method="number")
+```
+
+O gráfico nos mostra que nossa variável resposta (lpsa) apresenta um nível de correlação considerável com as variáveis lcavol, svi, lcp e lweight. O que nos indica que há uma grande possibilidade dessas variáveis fazerem parte do modelo que buscamos. 
+Restringindo nossa análise de correlação a estas variáveis, podemos ver que lcavol apresenta um nível de correlação considerável com lcp e svi, que por sua vez, também estão correlacionadas. Isso significa que podemos tentar modelar nosso problema usando apenas uma dessas variáveis e verificar se obtemos um bom resultado.
+
+#Proposição de modelos#
+
+O primeiro modelo proposto usa apenas a variável com maior correlação com a variável de resposta, a saber, lcavol. A tabela de sumarização e o gráfico da regressão para os dados de treino pode ser vistos abaixo.
+
+```{r}
+ggplot(train, aes(lcavol, lpsa)) +
+        geom_point() + 
+        geom_smooth(method = "lm") +
+        labs(x="Volume da Próstata (log)",y="PSA (log)",title="Modelo 1: Volume X PSA")
+
+model1 <- lm(lpsa ~ lcavol, train)
+summary(model1)
+```
+
+O modelo nos dá um RMSE de 0.8277, um R^2 ajustado de aproximadamente 0.53 e um p-valor baixo, $1.733*10^{-12}$. Esses são bons números, mas será possível melhorar nosso modelo utilizando lweight, a segunda variável com maior correlação com nossa variável de resposta?
+A seguir, podemos observar a tabela de sumarização de nosso segundo modelo, contendo a variável lweight.
+
+```{r}
+
+model2 <- lm(lpsa ~ lcavol + lweight, train)
+summary(model2)
+```
+
+Em nosso novo modelo, obtemos RMSE de 0.7613, R^2 ajustado de aproximademente 0.603 e um p-valor ainda menor que o encontrado anteriormente: $5.54*10^{-14}$
+A diferença entre os RMSE's e R^2 ajustados de nossos modelos 1 e 2 parece pequena, mas já pode ser considerada significativa e podemos concluir que nosso modelo 2 é melhor que o modelo 1.
+
+Após nosso modelo 2, outros modelos poderiam ser propostos. Além das variáveis utilizadas no modelo 2, estes contariam com outras variáveis com correlação significativa em relação a lpsa (pgg45 e svi), mas eles foram testados e nenhum deles aumentou muito a acurácia do modelo. Por apresentarem complexidade grande para pouco ganho, foram descartados.
+
+#Testando nosso modelo#
+Após achar nosso suposto modelo ideal, precisamos testá-lo. Para isso, usaremos os dados de teste disponibilizados no dataset utilizado nesse problema.
+Abaixo podemos ver a tabela de sumarização obtida a partir do modelo 2 e de nossos dados de teste.
+
+```{r}
+model2 <- lm(lpsa ~ lcavol + lweight, test)
+summary(model2)
+```
+
+Utilizando nossos dados de teste, verificamos que os valores do RMSE, de R^2 e do p-valor sofrem pouquíssima ou nenhuma modificação, o que significa que nosso modelo continua consistente quando deixamos de utilizar os dados de teste.  
+  
